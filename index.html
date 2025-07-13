@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>マニング公式 3D流量シミュレーション</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans JP', 'Inter', sans-serif;
+            overscroll-behavior: none;
+        }
+        .param-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #3b82f6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        .param-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #3b82f6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        #renderer-container {
+            touch-action: none;
+            background-color: #111827; /* bg-gray-900 */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white overflow-hidden">
+
+    <div class="flex flex-col lg:flex-row h-screen">
+        <!-- ===== コントロールパネル ===== -->
+        <div class="w-full lg:w-1/3 xl:w-1/4 p-4 bg-gray-800 shadow-2xl overflow-y-auto">
+            <h1 class="text-2xl font-bold mb-4 text-blue-300">3D水路流量シミュレーション</h1>
+            
+            <!-- 水路形状の選択 -->
+            <div class="mb-4">
+                <h2 class="text-lg font-semibold mb-3 border-b-2 border-gray-600 pb-2">1. 水路形状</h2>
+                <div id="shape-selector" class="grid grid-cols-3 gap-2">
+                    <button data-shape="trapezoid_open" class="shape-btn bg-blue-600 text-white py-2 px-3 rounded-lg text-sm transition-transform transform hover:scale-105">台形(開)</button>
+                    <button data-shape="trapezoid_closed" class="shape-btn bg-gray-600 text-white py-2 px-3 rounded-lg text-sm transition-transform transform hover:scale-105">台形(閉)</button>
+                    <button data-shape="circle" class="shape-btn bg-gray-600 text-white py-2 px-3 rounded-lg text-sm transition-transform transform hover:scale-105">円形</button>
+                </div>
+            </div>
+
+            <!-- パラメータ入力 -->
+            <div class="mb-4">
+                <h2 class="text-lg font-semibold mb-3 border-b-2 border-gray-600 pb-2">2. パラメータ設定</h2>
+                <div class="space-y-4">
+                    <!-- 共通パラメータ -->
+                    <div class="param-group common-params">
+                        <label for="n" class="block text-sm font-medium text-gray-300">粗度係数 (n)</label>
+                        <div class="flex items-center space-x-2">
+                            <input type="range" id="n" min="0.010" max="0.100" step="0.001" value="0.013" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer param-slider">
+                            <input type="number" id="n-value" value="0.013" class="w-24 bg-gray-900 text-white p-1 rounded-md text-center">
+                        </div>
+                    </div>
+                    <div class="param-group common-params">
+                        <label for="I" class="block text-sm font-medium text-gray-300">動水勾配 (I)</label>
+                        <div class="flex items-center space-x-2">
+                             <input type="text" id="I-value" value="1/1000" class="w-full bg-gray-900 text-white p-1 rounded-md text-center">
+                        </div>
+                    </div>
+                    <div class="param-group common-params">
+                        <label for="h" class="block text-sm font-medium text-gray-300">水深 (h) [m]</label>
+                        <div class="flex items-center space-x-2">
+                            <input type="range" id="h" min="0.01" max="5" step="0.01" value="1.0" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer param-slider">
+                            <input type="number" id="h-value" value="1.0" class="w-24 bg-gray-900 text-white p-1 rounded-md text-center">
+                        </div>
+                    </div>
+                    <!-- 台形用パラメータ -->
+                    <div id="params-trapezoid" class="param-group space-y-4">
+                        <div>
+                            <label for="b" class="block text-sm font-medium text-gray-300">底辺幅 (b) [m]</label>
+                            <div class="flex items-center space-x-2">
+                                <input type="range" id="b" min="0.1" max="10" step="0.1" value="2.0" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer param-slider">
+                                <input type="number" id="b-value" value="2.0" class="w-24 bg-gray-900 text-white p-1 rounded-md text-center">
+                            </div>
+                        </div>
+                        <div>
+                            <label for="m" class="block text-sm font-medium text-gray-300">法勾配 (1:m)</label>
+                            <div class="flex items-center space-x-2">
+                                <input type="range" id="m" min="0" max="3" step="0.1" value="1.5" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer param-slider">
+                                <input type="number" id="m-value" value="1.5" class="w-24 bg-gray-900 text-white p-1 rounded-md text-center">
+                            </div>
+                        </div>
+                        <div>
+                            <label for="H_trapezoid" class="block text-sm font-medium text-gray-300">水路高 (H) [m]</label>
+                            <div class="flex items-center space-x-2">
+                                <input type="range" id="H_trapezoid" min="0.1" max="10" step="0.1" value="2.5" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer param-slider">
+                                <input type="number" id="H_trapezoid-value" value="2.5" class="w-24 bg-gray-900 text-white p-1 rounded-md text-center">
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 円形用パラメータ -->
+                    <div id="params-circle" class="param-group space-y-4 hidden">
+                        <div>
+                            <label for="D" class="block text-sm font-medium text-gray-300">直径 (D) [m]</label>
+                            <div class="flex items-center space-x-2">
+                                <input type="range" id="D" min="0.1" max="10" step="0.1" value="2.0" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer param-slider">
+                                <input type="number" id="D-value" value="2.0" class="w-24 bg-gray-900 text-white p-1 rounded-md text-center">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 表示設定 -->
+            <div class="mb-4">
+                <h2 class="text-lg font-semibold mb-3 border-b-2 border-gray-600 pb-2">3. 表示設定</h2>
+                 <div class="flex items-center justify-between">
+                    <label for="toggle-arrows" class="text-sm font-medium text-gray-300">流速の矢印を表示</label>
+                    <input type="checkbox" id="toggle-arrows" checked class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                </div>
+            </div>
+
+            <!-- 計算結果 -->
+            <div class="mb-4">
+                <h2 class="text-lg font-semibold mb-3 border-b-2 border-gray-600 pb-2">4. 計算結果</h2>
+                <div class="grid grid-cols-2 gap-3 text-sm">
+                    <div class="bg-gray-700 p-3 rounded-lg">
+                        <p class="font-semibold text-blue-300">流量 (Q)</p>
+                        <p id="result-Q" class="text-xl font-mono">0.000 m³/s</p>
+                    </div>
+                    <div class="bg-gray-700 p-3 rounded-lg">
+                        <p class="font-semibold text-blue-300">平均流速 (V)</p>
+                        <p id="result-V" class="text-xl font-mono">0.000 m/s</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ===== 3Dビューア ===== -->
+        <div id="renderer-container" class="w-full lg:w-2/3 xl:w-3/4 h-full flex-grow relative">
+             <div class="absolute top-2 left-2 bg-gray-900 bg-opacity-50 p-2 rounded-md text-xs">
+                 マウス操作: 左ドラッグで回転 / 右ドラッグで平行移動 / スクロールでズーム
+             </div>
+        </div>
+    </div>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ===== グローバル変数 =====
+        let scene, camera, renderer, controls, waterMesh, channelMesh, mainGroup;
+        let flowArrows = [];
+        let currentVelocity = 0;
+        let showFlowArrows = true;
+        const clock = new THREE.Clock();
+        let currentShape = 'trapezoid_open';
+        let currentChannelLength = 0;
+
+        // ===== 初期化処理 =====
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111827);
+
+            const container = document.getElementById('renderer-container');
+            camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(10, 10, 20);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7);
+            scene.add(directionalLight);
+
+            // 水平グリッドを追加
+            const gridHelper = new THREE.GridHelper(100, 100, 0x888888, 0x444444);
+            scene.add(gridHelper);
+
+            mainGroup = new THREE.Group();
+            scene.add(mainGroup);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            setupEventListeners();
+            window.addEventListener('resize', onWindowResize, false);
+
+            update();
+            animate();
+        }
+
+        function setupEventListeners() {
+            document.querySelectorAll('.shape-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    currentShape = e.target.dataset.shape;
+                    document.querySelectorAll('.shape-btn').forEach(b => b.classList.replace('bg-blue-600', 'bg-gray-600'));
+                    e.target.classList.replace('bg-gray-600', 'bg-blue-600');
+                    
+                    document.getElementById('params-trapezoid').style.display = currentShape.includes('trapezoid') ? 'block' : 'none';
+                    document.getElementById('params-circle').style.display = currentShape === 'circle' ? 'block' : 'none';
+                    
+                    update();
+                });
+            });
+            const inputs = document.querySelectorAll('input[type="range"], input[type="number"], input[type="text"]');
+            inputs.forEach(input => {
+                input.addEventListener('input', (e) => {
+                    if (e.target.type === 'range') {
+                        document.getElementById(e.target.id + '-value').value = e.target.value;
+                    } else if (e.target.type === 'number') {
+                        const rangeEl = document.getElementById(e.target.id.replace('-value', ''));
+                        if (rangeEl) rangeEl.value = e.target.value;
+                    }
+                    update();
+                });
+            });
+            
+            // 矢印表示トグル
+            document.getElementById('toggle-arrows').addEventListener('change', (e) => {
+                showFlowArrows = e.target.checked;
+                update();
+            });
+        }
+        
+        function updateParameterUI() {
+            const hSlider = document.getElementById('h');
+            const hValueInput = document.getElementById('h-value');
+            let maxHeight;
+
+            if (currentShape.includes('trapezoid')) {
+                maxHeight = parseFloat(document.getElementById('H_trapezoid-value').value);
+            } else if (currentShape === 'circle') {
+                maxHeight = parseFloat(document.getElementById('D-value').value);
+            }
+
+            if (maxHeight) {
+                hSlider.max = maxHeight;
+                if (parseFloat(hValueInput.value) > maxHeight) {
+                    hValueInput.value = maxHeight.toFixed(2);
+                    hSlider.value = maxHeight;
+                }
+            }
+        }
+
+        function update() {
+            updateParameterUI();
+            const params = getParameters();
+            const results = calculateFlow(params);
+            currentVelocity = results.V;
+            updateResultsUI(results);
+            update3DModel(params, results);
+        }
+
+        function getParameters() {
+            const I_str = document.getElementById('I-value').value;
+            let I_val = 1/1000;
+            try {
+                if (I_str.includes('/')) {
+                    const parts = I_str.split('/');
+                    I_val = parseFloat(parts[0]) / parseFloat(parts[1]);
+                } else {
+                    I_val = parseFloat(I_str);
+                }
+                if (isNaN(I_val) || !isFinite(I_val)) I_val = 1/1000;
+            } catch {
+                I_val = 1/1000;
+            }
+            return {
+                shape: currentShape,
+                n: parseFloat(document.getElementById('n-value').value),
+                I: I_val,
+                h: parseFloat(document.getElementById('h-value').value),
+                b: parseFloat(document.getElementById('b-value').value),
+                m: parseFloat(document.getElementById('m-value').value),
+                H: parseFloat(document.getElementById('H_trapezoid-value').value),
+                D: parseFloat(document.getElementById('D-value').value),
+            };
+        }
+
+        function calculateFlow(p) {
+            let A = 0, P = 0, R = 0, V = 0, Q = 0;
+            if (p.h <= 0) return { A, P, R, V, Q };
+            switch (p.shape) {
+                case 'trapezoid_open':
+                case 'trapezoid_closed':
+                    const h_eff = Math.min(p.h, p.H);
+                    A = (p.b + p.m * h_eff) * h_eff;
+                    P = p.b + 2 * h_eff * Math.sqrt(1 + p.m * p.m);
+                    if (p.shape === 'trapezoid_closed' && h_eff >= p.H) {
+                        const topWidth = p.b + 2 * p.m * p.H;
+                        P += topWidth;
+                    }
+                    break;
+                case 'circle':
+                    const r = p.D / 2;
+                    const h_circ = Math.min(p.h, p.D);
+                    if (h_circ >= p.D) {
+                        A = Math.PI * r * r;
+                        P = 2 * Math.PI * r;
+                    } else {
+                        const theta = 2 * Math.acos((r - h_circ) / r);
+                        A = r * r * (theta - Math.sin(theta)) / 2;
+                        P = r * theta;
+                    }
+                    break;
+            }
+            if (P > 0) {
+                R = A / P;
+                V = (1 / p.n) * Math.pow(R, 2 / 3) * Math.pow(p.I, 1 / 2);
+                Q = A * V;
+            }
+            return { A, P, R, V, Q };
+        }
+
+        function updateResultsUI(r) {
+            document.getElementById('result-Q').textContent = `${r.Q.toFixed(3)} m³/s`;
+            document.getElementById('result-V').textContent = `${r.V.toFixed(3)} m/s`;
+        }
+
+        function update3DModel(p, r) {
+            mainGroup.clear(); 
+            flowArrows = [];
+
+            let wallThickness, channelLength;
+            if (p.shape.includes('trapezoid')) {
+                wallThickness = p.b / 10;
+                channelLength = p.b * 5;
+            } else { 
+                wallThickness = p.D / 10;
+                channelLength = p.D * 5;
+            }
+            currentChannelLength = channelLength;
+
+            const angle = Math.atan(p.I);
+            mainGroup.rotation.x = -angle;
+            // 水路の終端がy=0のグリッドに接するように、グループ全体を上に持ち上げる
+            mainGroup.position.y = (channelLength / 2) * Math.sin(angle);
+
+            let channelGeometry;
+            const extrudeSettings = { steps: 1, depth: channelLength, bevelEnabled: false };
+
+            switch (p.shape) {
+                case 'trapezoid_open': {
+                    const shape = new THREE.Shape();
+                    const t = wallThickness;
+                    const innerTopX = p.b / 2 + p.m * p.H;
+                    const innerBottomX = p.b / 2;
+                    const slopeAngle = p.m > 0 ? Math.atan(1 / p.m) : Math.PI / 2;
+                    const t_horiz = t / Math.sin(slopeAngle);
+                    const outerTopX = innerTopX + t_horiz;
+                    const outerBottomX = innerBottomX + t;
+                    shape.moveTo(outerBottomX, -t);
+                    shape.lineTo(outerTopX, p.H);
+                    shape.lineTo(innerTopX, p.H);
+                    shape.lineTo(innerBottomX, 0);
+                    shape.lineTo(-innerBottomX, 0);
+                    shape.lineTo(-innerTopX, p.H);
+                    shape.lineTo(-outerTopX, p.H);
+                    shape.lineTo(-outerBottomX, -t);
+                    shape.closePath();
+                    channelGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                    break;
+                }
+                case 'trapezoid_closed': {
+                    const t = wallThickness;
+                    const m = p.m;
+                    const b = p.b;
+                    const H = p.H;
+                    const hole = new THREE.Path();
+                    hole.moveTo(-b / 2, 0);
+                    hole.lineTo(b / 2, 0);
+                    hole.lineTo(b / 2 + m * H, H);
+                    hole.lineTo(-b / 2 - m * H, H);
+                    hole.closePath();
+                    const sqrt_1_m2 = (m > 0) ? Math.sqrt(1 + m * m) : 1;
+                    const O1_x = -b / 2 - t * sqrt_1_m2 + m * t;
+                    const O1_y = -t;
+                    const O2_x = b / 2 + t * sqrt_1_m2 - m * t;
+                    const O2_y = -t;
+                    const O3_x = b / 2 + m * H + m * t + t * sqrt_1_m2;
+                    const O3_y = H + t;
+                    const O4_x = -b / 2 - m * H - m * t - t * sqrt_1_m2;
+                    const O4_y = H + t;
+                    const shape = new THREE.Shape();
+                    shape.moveTo(O1_x, O1_y);
+                    shape.lineTo(O2_x, O2_y);
+                    shape.lineTo(O3_x, O3_y);
+                    shape.lineTo(O4_x, O4_y);
+                    shape.closePath();
+                    shape.holes.push(hole);
+                    channelGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                    break;
+                }
+                case 'circle': {
+                    const shape = new THREE.Shape();
+                    const r_outer = p.D / 2 + wallThickness;
+                    const r_inner = p.D / 2;
+                    shape.absarc(0, 0, r_outer, 0, Math.PI * 2, false);
+                    const hole = new THREE.Path();
+                    hole.absarc(0, 0, r_inner, 0, Math.PI * 2, true);
+                    shape.holes.push(hole);
+                    channelGeometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                    break;
+                }
+            }
+            
+            const channelMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x888888, 
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.3
+            });
+            channelMesh = new THREE.Mesh(channelGeometry, channelMaterial);
+            channelMesh.position.z = -channelLength / 2;
+            if (p.shape === 'circle') {
+                channelMesh.position.y = p.D / 2;
+            }
+            mainGroup.add(channelMesh);
+            
+            let waterShape;
+            let h_visual = p.h;
+            if (p.shape.includes('trapezoid')) {
+                h_visual = Math.min(p.h, p.H);
+            } else if (p.shape === 'circle') {
+                h_visual = Math.min(p.h, p.D);
+            }
+
+            if (h_visual > 0) {
+                 switch (p.shape) {
+                    case 'trapezoid_open':
+                    case 'trapezoid_closed':
+                        const waterTopWidth = p.b + 2 * p.m * h_visual;
+                        waterShape = createTrapezoidShape(p.b / 2, waterTopWidth / 2, h_visual);
+                        break;
+                    case 'circle':
+                        waterShape = createCircularSegmentShape(p.D / 2, h_visual);
+                        break;
+                }
+            }
+
+            if (waterShape && waterShape.getPoints().length > 0) {
+                const waterGeometry = new THREE.ExtrudeGeometry(waterShape, extrudeSettings);
+                const waterMaterial = new THREE.MeshStandardMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.7 });
+                waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
+                waterMesh.position.z = -channelLength / 2;
+                if (p.shape === 'circle') {
+                    waterMesh.position.y = p.D / 2;
+                }
+                mainGroup.add(waterMesh);
+                if (showFlowArrows) {
+                    addFlowArrows(p, h_visual, channelLength);
+                }
+            }
+            
+            // カメラのターゲットを調整
+            controls.target.set(0, (p.shape.includes('trapezoid') ? p.H : p.D) / 2, 0);
+        }
+
+        function addFlowArrows(p, h_visual, channelLength) {
+            if (currentVelocity <= 0) return;
+
+            let surface_width = 0;
+            if (p.shape.includes('trapezoid')) {
+                surface_width = p.b + 2 * p.m * h_visual;
+            } else if (p.shape === 'circle') {
+                const r = p.D / 2;
+                const y_rel = h_visual - r;
+                if (r * r - y_rel * y_rel >= 0) {
+                    surface_width = 2 * Math.sqrt(r * r - y_rel * y_rel);
+                }
+            }
+
+            const baseDimension = p.shape.includes('trapezoid') ? p.b : p.D;
+            const arrowLength = baseDimension * 0.5;
+
+            const arrowCountX = 3;
+            const arrowCountZ = 5;
+            const dir = new THREE.Vector3(0, 0, -1);
+            const headLength = arrowLength * 0.4;
+            const headWidth = headLength * 0.8;
+            const hex = 0xffff00;
+
+            for (let i = 0; i < arrowCountX; i++) {
+                for (let j = 0; j < arrowCountZ; j++) {
+                    const x = (surface_width > 0 && arrowCountX > 1) ? (i / (arrowCountX - 1) - 0.5) * surface_width * 0.8 : 0;
+                    const z = (j / arrowCountZ) * channelLength - channelLength / 2;
+                    const y = h_visual;
+                    
+                    const origin = new THREE.Vector3(x, y, z);
+                    
+                    const arrowHelper = new THREE.ArrowHelper(dir, origin, arrowLength, hex, headLength, headWidth);
+                    
+                    flowArrows.push(arrowHelper);
+                    mainGroup.add(arrowHelper);
+                }
+            }
+        }
+        
+        function createTrapezoidShape(bottomWidth, topWidth, height) {
+            const shape = new THREE.Shape();
+            shape.moveTo(-bottomWidth, 0);
+            shape.lineTo(bottomWidth, 0);
+            shape.lineTo(topWidth, height);
+            shape.lineTo(-topWidth, height);
+            shape.closePath();
+            return shape;
+        }
+        
+        function createCircularSegmentShape(r, h) {
+            const shape = new THREE.Shape();
+            if (h <= 0.001) return shape;
+
+            if (h >= 2 * r - 0.001) {
+                shape.absarc(0, 0, r, 0, Math.PI * 2, false);
+                return shape;
+            }
+
+            const y_surface = h - r;
+            const x_surface = Math.sqrt(r * r - y_surface * y_surface);
+            const startAngle = Math.atan2(y_surface, -x_surface);
+            const endAngle = Math.atan2(y_surface, x_surface);
+
+            shape.moveTo(-x_surface, y_surface);
+            shape.absarc(0, 0, r, startAngle, endAngle, false); 
+            shape.closePath();
+
+            return shape;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const deltaTime = clock.getDelta();
+            
+            if (flowArrows.length > 0 && currentVelocity > 0) {
+                const displacement = currentVelocity * deltaTime * 2.0; 
+                
+                flowArrows.forEach(arrow => {
+                    arrow.position.z -= displacement;
+                    if (arrow.position.z < -currentChannelLength / 2) {
+                        arrow.position.z += currentChannelLength;
+                    }
+                });
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('renderer-container');
+            if (!container) return;
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        init();
+
+    </script>
+</body>
+</html>
